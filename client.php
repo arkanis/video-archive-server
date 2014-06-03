@@ -10,6 +10,7 @@ if ($config === null or !isset($config->archive_dir) or !isset($config->log) or 
 
 $archive_dir = realpath(dirname(__FILE__) . '/' . $config->archive_dir);
 $log = fopen(dirname(__FILE__) . '/' . $config->log, 'a');
+fprintf($log, "%s got a connection!\n", strftime('%F %T'));
 //$log = fopen('php://stderr', 'w');
 
 // Read initial HTTP request line
@@ -51,17 +52,26 @@ if ($action == 'GET' and $path == '/events/new' and isset($params['name'])) {
 } else if ($action == 'GET' and $url == '/announcements.json') {
 	// The user wants to know all currently announced events.
 	$json = list_streamable_events($archive_dir);
-	echo(build_http_response($json, '200 OK', 'application/json; charset=utf-8'));
+	echo(build_http_response($json, '200 OK', 'application/json; charset=utf-8', "Cache-Control: private, max-age=0, no-cache\r\n"));
 } else if ($action == 'POST' and preg_match('#^/(?<event>[^/]+)/(?<talk>[^/?]+)$#', $path, $matches)) {
 	// The user sends us the stream for an event
-	$command = $config->streaming_command;
 	if ( isset($params['testOnly']) and $params['testOnly'] === 'true' )
 		$command = $config->test_command;
-	$result = stream_event_video_data($archive_dir, $matches['event'], $matches['talk'], $command);
+	else
+		$command = $config->streaming_command;
+	$result = stream_event_video_data($archive_dir, $matches['event'], $matches['talk'], $command, $config->event_message_log);
 	if ($result)
 		echo(build_http_response('', '204 No Content'));
 	else
 		echo(build_http_response('Sorry, something went wrong. Could not find the event you want to stream to or the streaming is broken. Please create it first or look at the server log.', '404 File Not Found'));
+} else if ($action == 'GET' and preg_match('#^/(?<event>[^/]+)/messages.log$#', $path, $matches)) {
+	$log_file = $config->archive_dir . '/' . $matches['event'] . '/' . $config->event_message_log;
+	if ( file_exists($log_file) ) {
+		echo(build_http_response(''));
+		readfile($log_file);
+	} else {
+		echo(build_http_response('Sorry, no message log yet.', '404 File Not Found'));
+	}
 } else {
 	// No idea what the client wants...
 	echo(build_http_response('Sorry, no idea what to do with the URL you requested.', '404 File Not Found'));
@@ -72,10 +82,11 @@ if ($action == 'GET' and $path == '/events/new' and isset($params['name'])) {
 // Utility functions
 //
 
-function build_http_response($content, $status = '200 OK', $content_type = 'text/plain; charset=utf-8') {
+function build_http_response($content, $status = '200 OK', $content_type = 'text/plain; charset=utf-8', $additional_headers = '') {
 	$response = "HTTP/1.0 $status\r\n";
 	$response .= "Content-Type: $content_type\r\n";
 	$response .= "Connection: close\r\n";
+	$response .= $additional_headers;
 	$response .= "\r\n";
 	$response .= $content;
 	
@@ -154,7 +165,7 @@ function list_streamable_events($archive_dir) {
 	return json_encode($events_data, JSON_FORCE_OBJECT);
 }
 
-function stream_event_video_data($archive_dir, $event_id, $talk, $stream_command) {
+function stream_event_video_data($archive_dir, $event_id, $talk, $stream_command, $message_log_name) {
 	global $log;
 	
 	$event_id = basename($event_id);
@@ -171,7 +182,7 @@ function stream_event_video_data($archive_dir, $event_id, $talk, $stream_command
 	$existing_talk_files = glob("$event_dir/$talk_name*.$talk_extension");
 	$talk_filename = $talk_name . '.' . count($existing_talk_files) . '.' . $talk_extension;
 	
-	$streaming_log_fd = fopen("$event_dir/streaming.log", 'a');
+	$streaming_log_fd = fopen("$event_dir/$message_log_name", 'a');
 	
 	$stream_command = '/bin/sh -c ' . escapeshellarg($stream_command);
 	$streaming_process = proc_open('/bin/sh -c ' . escapeshellarg($stream_command), array(

@@ -1,6 +1,7 @@
 {
 	"archive_dir": "../archive",
 	"log": "server.log",
+	"event_message_log": "messages.log",
 	"streaming_command": "tee $event_dir/$talk_filename | ffmpeg2theora -f matroska --speedlevel 2 --videobitrate 500 --audiobitrate 64 --no-skeleton --output /dev/stdout pipe:0 | oggfwd -p -n event icecast.example.com 80 xyz /event.ogv",
 	"test_command": "ffmpeg2theora -f matroska --speedlevel 2 --videobitrate 500 --audiobitrate 64 --no-skeleton --output /dev/stdout pipe:0 | oggfwd -p -n event icecast.example.com 80 xyz /event.ogv"
 }
