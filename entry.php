@@ -113,7 +113,7 @@ class Entry
 	static function parse_head($head, $clean_up = true)
 	{
 		$headers = array();
-		foreach( explode("\n", $head) as $header_line )
+		foreach( explode("\n", trim($head)) as $header_line )
 		{
 			list($name, $value) = explode(': ', $header_line, 2);
 			if ($clean_up)
